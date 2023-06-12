@@ -13,12 +13,16 @@ from sklearn.preprocessing import StandardScaler
 
 from multirocket.logistic_regression import LogisticRegression
 
+import logging
+logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(filename='log/.log', filemode='w', format='%(name)s - %(levelname)s - %(message)s')
+
 
 @njit("float32[:](float64[:,:,:],int32[:],int32[:],int32[:],int32[:],float32[:])",
       fastmath=True, parallel=False, cache=True)
 def _fit_biases(X, num_channels_per_combination, channel_indices, dilations, num_features_per_dilation, quantiles):
     num_examples, num_channels, input_length = X.shape
-
+    logging.debug("_fit_biases()")
     # equivalent to:
     # >>> from itertools import combinations
     # >>> indices = np.array([_ for _ in combinations(np.arange(9), 3)], dtype = np.int32)
@@ -104,11 +108,12 @@ def _fit_biases(X, num_channels_per_combination, channel_indices, dilations, num
 
             combination_index += 1
             num_channels_start = num_channels_end
-
+    logging.debug("_fit_biases() done")
     return biases
 
 
 def _fit_dilations(input_length, num_features, max_dilations_per_kernel):
+    logging.debug("_fit_dilations()")
     num_kernels = 84
 
     num_features_per_kernel = num_features // num_kernels
@@ -127,7 +132,7 @@ def _fit_dilations(input_length, num_features, max_dilations_per_kernel):
         num_features_per_dilation[i] += 1
         remainder -= 1
         i = (i + 1) % len(num_features_per_dilation)
-
+    logging.debug("_fit_dilations() done")
     return dilations, num_features_per_dilation
 
 
@@ -137,6 +142,8 @@ def _quantiles(n):
 
 
 def fit(X, num_features=10_000, max_dilations_per_kernel=32):
+    logging.debug("fit()")
+
     _, num_channels, input_length = X.shape
 
     num_kernels = 84
@@ -169,7 +176,7 @@ def fit(X, num_features=10_000, max_dilations_per_kernel=32):
 
     biases = _fit_biases(X, num_channels_per_combination, channel_indices,
                          dilations, num_features_per_dilation, quantiles)
-
+    logging.debug("fit() done")
     return num_channels_per_combination, channel_indices, dilations, num_features_per_dilation, biases
 
 
@@ -177,6 +184,7 @@ def fit(X, num_features=10_000, max_dilations_per_kernel=32):
     "float32[:,:](float64[:,:,:],float64[:,:,:],Tuple((int32[:],int32[:],int32[:],int32[:],float32[:])),Tuple((int32[:],int32[:],int32[:],int32[:],float32[:])),int32)",
     fastmath=True, parallel=True, cache=True)
 def transform(X, X1, parameters, parameters1, n_features_per_kernel=4):
+    logging.debug("transform()")
     num_examples, num_channels, input_length = X.shape
 
     num_channels_per_combination, channel_indices, dilations, num_features_per_dilation, biases = parameters
@@ -477,7 +485,7 @@ def transform(X, X1, parameters, parameters1, n_features_per_kernel=4):
                         features[example_index, end] = mean_index / ppv if ppv > 0 else -1
 
                 feature_index_start = feature_index_end
-
+    logging.debug("transform() done")
     return features
 
 
@@ -514,6 +522,7 @@ class MultiRocket:
         self.verbose = verbose
 
     def fit(self, x_train, y_train, predict_on_train=True):
+        logging.debug("MultiRocket.fit()")
         if self.verbose > 1:
             print('[{}] Training with training set of {}'.format(self.name, x_train.shape))
         if x_train.shape[2] < 10:
@@ -586,10 +595,11 @@ class MultiRocket:
             yhat = self.classifier.predict(x_train_transform)
         else:
             yhat = None
-
+        logging.debug("MultiRocket.fit() done")
         return yhat
 
     def predict(self, x):
+        logging.debug("MultiRocket.predict()")
         if self.verbose > 1:
             print('[{}] Predicting'.format(self.name))
 
@@ -618,5 +628,5 @@ class MultiRocket:
         self.test_duration = time.perf_counter() - start_time
         if self.verbose > 1:
             print("[{}] Predicting completed, took {:.3f}s".format(self.name, self.test_duration))
-
+        logging.debug("MultiRocket.predict() done")
         return yhat
