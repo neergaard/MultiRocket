@@ -22,7 +22,6 @@ logging.basicConfig(filename='log/.log', filemode='w', format='%(name)s - %(leve
       fastmath=True, parallel=False, cache=True)
 def _fit_biases(X, num_channels_per_combination, channel_indices, dilations, num_features_per_dilation, quantiles):
     num_examples, num_channels, input_length = X.shape
-    logging.debug("_fit_biases()")
     # equivalent to:
     # >>> from itertools import combinations
     # >>> indices = np.array([_ for _ in combinations(np.arange(9), 3)], dtype = np.int32)
@@ -108,7 +107,6 @@ def _fit_biases(X, num_channels_per_combination, channel_indices, dilations, num
 
             combination_index += 1
             num_channels_start = num_channels_end
-    logging.debug("_fit_biases() done")
     return biases
 
 
@@ -184,7 +182,6 @@ def fit(X, num_features=10_000, max_dilations_per_kernel=32):
     "float32[:,:](float64[:,:,:],float64[:,:,:],Tuple((int32[:],int32[:],int32[:],int32[:],float32[:])),Tuple((int32[:],int32[:],int32[:],int32[:],float32[:])),int32)",
     fastmath=True, parallel=True, cache=True)
 def transform(X, X1, parameters, parameters1, n_features_per_kernel=4):
-    logging.debug("transform()")
     num_examples, num_channels, input_length = X.shape
 
     num_channels_per_combination, channel_indices, dilations, num_features_per_dilation, biases = parameters
@@ -485,7 +482,6 @@ def transform(X, X1, parameters, parameters1, n_features_per_kernel=4):
                         features[example_index, end] = mean_index / ppv if ppv > 0 else -1
 
                 feature_index_start = feature_index_end
-    logging.debug("transform() done")
     return features
 
 
