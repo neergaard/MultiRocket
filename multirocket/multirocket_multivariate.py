@@ -107,7 +107,6 @@ def _fit_biases(X, num_channels_per_combination, channel_indices, dilations, num
 
 
 def _fit_dilations(input_length, num_features, max_dilations_per_kernel):
-    logging.debug("_fit_dilations()")
     num_kernels = 84
 
     num_features_per_kernel = num_features // num_kernels
@@ -126,7 +125,6 @@ def _fit_dilations(input_length, num_features, max_dilations_per_kernel):
         num_features_per_dilation[i] += 1
         remainder -= 1
         i = (i + 1) % len(num_features_per_dilation)
-    logging.debug("_fit_dilations() done")
     return dilations, num_features_per_dilation
 
 
