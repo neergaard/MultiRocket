@@ -584,7 +584,7 @@ class MultiRocket:
             yhat = None
         return yhat
 
-    def predict(self, x):
+    def predict(self, x, output_probs=False):
         if self.verbose > 1:
             print('[{}] Predicting'.format(self.name))
 
@@ -609,7 +609,7 @@ class MultiRocket:
                                                                                   x_transform.shape))
 
         start_time = time.perf_counter()
-        yhat = self.classifier.predict(x_transform)
+        yhat = self.classifier.predict(x_transform, output_probs=output_probs)
         self.test_duration = time.perf_counter() - start_time
         if self.verbose > 1:
             print("[{}] Predicting completed, took {:.3f}s".format(self.name, self.test_duration))
