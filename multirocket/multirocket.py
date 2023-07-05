@@ -503,8 +503,7 @@ class MultiRocket:
             self.classifier = make_pipeline(
                 StandardScaler(),
                 RidgeClassifierCV(
-                    alphas=np.logspace(-3, 3, 10),
-                    normalize=False
+                    alphas=np.logspace(-3, 3, 10)
                 )
             )
         else:
