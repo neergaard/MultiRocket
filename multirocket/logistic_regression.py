@@ -166,18 +166,19 @@ class LogisticRegression:
 
     def predict(self, x, output_probs=False):
         x = self.scaler.transform(x)
-
         with torch.no_grad():
             # set the model in evaluation mode
             self.model.eval()
 
             output = self.model(torch.tensor(x, dtype=torch.float32).to(self.device))
 
+            if output_probs:
+                probs = torch.nn.functional.softmax(output, dim=1).cpu().numpy()
+
             if self.num_classes > 2:
-                probs = output
                 yhat = self.classes[np.argmax(output.cpu().detach().numpy(), axis=1)]
             else:
-                probs = torch.sigmoid(output)
-                yhat = np.round(probs.cpu().detach().numpy())
+                yhat = torch.sigmoid(output)
+                yhat = np.round(yhat.cpu().detach().numpy())
 
             return (yhat, probs) if output_probs else yhat
