@@ -512,6 +512,7 @@ class MultiRocket:
 
         self.clf = classifier
         self.classifier = None
+        self.device = device
         self.train_duration = 0
         self.test_duration = 0
         self.generate_kernel_duration = 0
