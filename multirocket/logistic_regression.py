@@ -1,4 +1,5 @@
 import copy
+from typing import Literal, Union
 
 import numpy as np
 import torch
@@ -12,15 +13,15 @@ from tqdm import tqdm
 class LogisticRegression:
 
     def __init__(
-            self,
-            num_features,
-            max_epochs=500,
-            minibatch_size=256,
-            validation_size=2 ** 11,
-            learning_rate=1e-4,
-            patience_lr=5,  # 50 minibatches
-            patience=10,  # 100 minibatches
-            device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self,
+        num_features,
+        max_epochs=500,
+        minibatch_size=256,
+        validation_size=2**11,
+        learning_rate=1e-4,
+        patience_lr=5,  # 50 minibatches
+        patience=10,  # 100 minibatches
+        device=Literal["cuda", "cpu"],
     ):
         self.name = "LogisticRegression"
         self.args = {
@@ -34,7 +35,7 @@ class LogisticRegression:
         }
 
         self.model = None
-        self.device = device
+        self.device = torch.device(device)
         self.classes = None
         self.scaler = None
         self.num_classes = None
@@ -57,34 +58,29 @@ class LogisticRegression:
             loss_function = torch.nn.CrossEntropyLoss()
         optimizer = torch.optim.Adam(model.parameters(), lr=self.args["lr"])
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,
-            factor=0.5,
-            min_lr=1e-8,
-            patience=self.args["patience_lr"]
+            optimizer, factor=0.5, min_lr=1e-8, patience=self.args["patience_lr"]
         )
 
         training_size = x_train.shape[0]
         if self.args["validation_size"] < training_size:
             x_training, x_validation, y_training, y_validation = train_test_split(
-                x_train, y_train,
-                test_size=self.args["validation_size"],
-                stratify=y_train
+                x_train, y_train, test_size=self.args["validation_size"], stratify=y_train
             )
 
             train_data = TensorDataset(
                 torch.tensor(x_training, dtype=torch.float32).to(self.device),
-                torch.tensor(y_training, dtype=torch.long).to(self.device)
+                torch.tensor(y_training, dtype=torch.long).to(self.device),
             )
             val_data = TensorDataset(
                 torch.tensor(x_validation, dtype=torch.float32).to(self.device),
-                torch.tensor(y_validation, dtype=torch.long).to(self.device)
+                torch.tensor(y_validation, dtype=torch.long).to(self.device),
             )
             train_dataloader = DataLoader(train_data, shuffle=True, batch_size=self.args["minibatch_size"])
             val_dataloader = DataLoader(val_data, batch_size=self.args["minibatch_size"])
         else:
             train_data = TensorDataset(
                 torch.tensor(x_train, dtype=torch.float32).to(self.device),
-                torch.tensor(y_train, dtype=torch.long).to(self.device)
+                torch.tensor(y_train, dtype=torch.long).to(self.device),
             )
             train_dataloader = DataLoader(train_data, shuffle=True, batch_size=self.args["minibatch_size"])
             val_dataloader = None

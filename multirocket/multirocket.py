@@ -14,14 +14,14 @@ from sklearn.preprocessing import StandardScaler
 from multirocket.logistic_regression import LogisticRegression
 
 
-@njit("float32[:](float64[:,:],int32[:],int32[:],float32[:])",
-      fastmath=True, parallel=False, cache=True)
+@njit("float32[:](float64[:,:],int32[:],int32[:],float32[:])", fastmath=True, parallel=False, cache=True)
 def _fit_biases(X, dilations, num_features_per_dilation, quantiles):
     num_examples, input_length = X.shape
 
     # equivalent to:
     # >>> from itertools import combinations
     # >>> indices = np.array([_ for _ in combinations(np.arange(9), 3)], dtype = np.int32)
+    # fmt: off
     indices = np.array((
         0, 1, 2, 0, 1, 3, 0, 1, 4, 0, 1, 5, 0, 1, 6, 0, 1, 7, 0, 1, 8,
         0, 2, 3, 0, 2, 4, 0, 2, 5, 0, 2, 6, 0, 2, 7, 0, 2, 8, 0, 3, 4,
@@ -36,6 +36,7 @@ def _fit_biases(X, dilations, num_features_per_dilation, quantiles):
         3, 5, 8, 3, 6, 7, 3, 6, 8, 3, 7, 8, 4, 5, 6, 4, 5, 7, 4, 5, 8,
         4, 6, 7, 4, 6, 8, 4, 7, 8, 5, 6, 7, 5, 6, 8, 5, 7, 8, 6, 7, 8
     ), dtype=np.int32).reshape(84, 3)
+    # fmt: on
 
     num_kernels = len(indices)
     num_dilations = len(dilations)
@@ -87,8 +88,9 @@ def _fit_biases(X, dilations, num_features_per_dilation, quantiles):
 
             C = C_alpha + C_gamma[index_0] + C_gamma[index_1] + C_gamma[index_2]
 
-            biases[feature_index_start:feature_index_end] = np.quantile(C, quantiles[
-                                                                           feature_index_start:feature_index_end])
+            biases[feature_index_start:feature_index_end] = np.quantile(
+                C, quantiles[feature_index_start:feature_index_end]
+            )
 
             feature_index_start = feature_index_end
 
@@ -103,9 +105,9 @@ def _fit_dilations(input_length, num_features, max_dilations_per_kernel):
     multiplier = num_features_per_kernel / true_max_dilations_per_kernel
 
     max_exponent = np.log2((input_length - 1) / (9 - 1))
-    dilations, num_features_per_dilation = \
-        np.unique(np.logspace(0, max_exponent, true_max_dilations_per_kernel, base=2).astype(np.int32),
-                  return_counts=True)
+    dilations, num_features_per_dilation = np.unique(
+        np.logspace(0, max_exponent, true_max_dilations_per_kernel, base=2).astype(np.int32), return_counts=True
+    )
     num_features_per_dilation = (num_features_per_dilation * multiplier).astype(np.int32)  # this is a vector
 
     remainder = num_features_per_kernel - np.sum(num_features_per_dilation)
@@ -141,7 +143,10 @@ def fit(X, num_features=10_000, max_dilations_per_kernel=32):
 
 @njit(
     "float32[:,:](float64[:,:],float64[:,:],Tuple((int32[:],int32[:],float32[:])),Tuple((int32[:],int32[:],float32[:])),int32)",
-    fastmath=True, parallel=True, cache=True)
+    fastmath=True,
+    parallel=True,
+    cache=True,
+)
 def transform(X, X1, parameters, parameters1, n_features_per_kernel=4):
     num_examples, input_length = X.shape
 
@@ -151,6 +156,7 @@ def transform(X, X1, parameters, parameters1, n_features_per_kernel=4):
     # equivalent to:
     # >>> from itertools import combinations
     # >>> indices = np.array([_ for _ in combinations(np.arange(9), 3)], dtype = np.int32)
+    # fmt: off
     indices = np.array((
         0, 1, 2, 0, 1, 3, 0, 1, 4, 0, 1, 5, 0, 1, 6, 0, 1, 7, 0, 1, 8,
         0, 2, 3, 0, 2, 4, 0, 2, 5, 0, 2, 6, 0, 2, 7, 0, 2, 8, 0, 3, 4,
@@ -165,6 +171,7 @@ def transform(X, X1, parameters, parameters1, n_features_per_kernel=4):
         3, 5, 8, 3, 6, 7, 3, 6, 8, 3, 7, 8, 4, 5, 6, 4, 5, 7, 4, 5, 8,
         4, 6, 7, 4, 6, 8, 4, 7, 8, 5, 6, 7, 5, 6, 8, 5, 7, 8, 6, 7, 8
     ), dtype=np.int32).reshape(84, 3)
+    # fmt: on
 
     num_kernels = len(indices)
     num_dilations = len(dilations)
@@ -224,10 +231,7 @@ def transform(X, X1, parameters, parameters1, n_features_per_kernel=4):
 
                 index_0, index_1, index_2 = indices[kernel_index]
 
-                C = C_alpha + \
-                    C_gamma[index_0] + \
-                    C_gamma[index_1] + \
-                    C_gamma[index_2]
+                C = C_alpha + C_gamma[index_0] + C_gamma[index_1] + C_gamma[index_2]
 
                 if _padding1 == 0:
                     for feature_count in range(num_features_this_dilation):
@@ -345,10 +349,7 @@ def transform(X, X1, parameters, parameters1, n_features_per_kernel=4):
 
                 index_0, index_1, index_2 = indices[kernel_index]
 
-                C = C_alpha + \
-                    C_gamma[index_0] + \
-                    C_gamma[index_1] + \
-                    C_gamma[index_2]
+                C = C_alpha + C_gamma[index_0] + C_gamma[index_1] + C_gamma[index_2]
 
                 if _padding1 == 0:
                     for feature_count in range(num_features_this_dilation):
@@ -426,12 +427,7 @@ def transform(X, X1, parameters, parameters1, n_features_per_kernel=4):
 
 class MultiRocket:
 
-    def __init__(
-            self,
-            num_features=50000,
-            classifier="ridge",
-            verbose=0
-    ):
+    def __init__(self, num_features=50000, classifier="ridge", verbose=0, device="cpu"):
         self.name = "MultiRocket"
 
         self.base_parameters = None
@@ -442,7 +438,7 @@ class MultiRocket:
         self.num_kernels = int(self.num_features / self.n_features_per_kernel)
 
         if verbose > 1:
-            print('[{}] Creating {} with {} kernels'.format(self.name, self.name, self.num_kernels))
+            print("[{}] Creating {} with {} kernels".format(self.name, self.name, self.num_kernels))
 
         self.clf = classifier
         self.classifier = None
@@ -458,7 +454,7 @@ class MultiRocket:
 
     def fit(self, x_train, y_train, predict_on_train=True):
         if self.verbose > 1:
-            print('[{}] Training with training set of {}'.format(self.name, x_train.shape))
+            print("[{}] Training with training set of {}".format(self.name, x_train.shape))
 
         self.generate_kernel_duration = 0
         self.apply_kernel_on_train_duration = 0
@@ -471,21 +467,13 @@ class MultiRocket:
         self.train_transforms_duration += time.perf_counter() - _start_time
 
         _start_time = time.perf_counter()
-        self.base_parameters = fit(
-            x_train,
-            num_features=self.num_kernels
-        )
-        self.diff1_parameters = fit(
-            xx,
-            num_features=self.num_kernels
-        )
+        self.base_parameters = fit(x_train, num_features=self.num_kernels)
+        self.diff1_parameters = fit(xx, num_features=self.num_kernels)
         self.generate_kernel_duration += time.perf_counter() - _start_time
 
         _start_time = time.perf_counter()
         x_train_transform = transform(
-            x_train, xx,
-            self.base_parameters, self.diff1_parameters,
-            self.n_features_per_kernel
+            x_train, xx, self.base_parameters, self.diff1_parameters, self.n_features_per_kernel
         )
         self.apply_kernel_on_train_duration += time.perf_counter() - _start_time
 
@@ -493,30 +481,24 @@ class MultiRocket:
 
         elapsed_time = time.perf_counter() - start_time
         if self.verbose > 1:
-            print('[{}] Kernels applied!, took {}s'.format(self.name, elapsed_time))
-            print('[{}] Transformed Shape {}'.format(self.name, x_train_transform.shape))
+            print("[{}] Kernels applied!, took {}s".format(self.name, elapsed_time))
+            print("[{}] Transformed Shape {}".format(self.name, x_train_transform.shape))
 
         if self.verbose > 1:
-            print('[{}] Training'.format(self.name))
+            print("[{}] Training".format(self.name))
 
         if self.clf.lower() == "ridge":
-            self.classifier = make_pipeline(
-                StandardScaler(),
-                RidgeClassifierCV(
-                    alphas=np.logspace(-3, 3, 10)
-                )
-            )
+            self.classifier = make_pipeline(StandardScaler(), RidgeClassifierCV(alphas=np.logspace(-3, 3, 10)))
         else:
             self.classifier = LogisticRegression(
-                num_features=x_train_transform.shape[1],
-                max_epochs=200,
+                num_features=x_train_transform.shape[1], max_epochs=200, device=self.device
             )
         _start_time = time.perf_counter()
         self.classifier.fit(x_train_transform, y_train)
         self.train_duration = time.perf_counter() - _start_time
 
         if self.verbose > 1:
-            print('[{}] Training done!, took {:.3f}s'.format(self.name, self.train_duration))
+            print("[{}] Training done!, took {:.3f}s".format(self.name, self.train_duration))
         if predict_on_train:
             yhat = self.classifier.predict(x_train_transform)
         else:
@@ -526,7 +508,7 @@ class MultiRocket:
 
     def predict(self, x, output_probs=False):
         if self.verbose > 1:
-            print('[{}] Predicting'.format(self.name))
+            print("[{}] Predicting".format(self.name))
 
         self.apply_kernel_on_test_duration = 0
         self.test_transforms_duration = 0
@@ -536,17 +518,16 @@ class MultiRocket:
         self.test_transforms_duration += time.perf_counter() - _start_time
 
         _start_time = time.perf_counter()
-        x_transform = transform(
-            x, xx,
-            self.base_parameters, self.diff1_parameters,
-            self.n_features_per_kernel
-        )
+        x_transform = transform(x, xx, self.base_parameters, self.diff1_parameters, self.n_features_per_kernel)
         self.apply_kernel_on_test_duration += time.perf_counter() - _start_time
 
         x_transform = np.nan_to_num(x_transform)
         if self.verbose > 1:
-            print('Kernels applied!, took {:.3f}s. Transformed shape: {}.'.format(self.apply_kernel_on_test_duration,
-                                                                                  x_transform.shape))
+            print(
+                "Kernels applied!, took {:.3f}s. Transformed shape: {}.".format(
+                    self.apply_kernel_on_test_duration, x_transform.shape
+                )
+            )
 
         start_time = time.perf_counter()
         if output_probs:
