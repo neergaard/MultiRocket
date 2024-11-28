@@ -40,7 +40,7 @@ class LogisticRegression:
         self.scaler = None
         self.num_classes = None
 
-    def fit(self, x_train, y_train):
+    def fit(self, x_train, y_train, group_id=None):
         self.classes = np.unique(y_train)
         self.num_classes = len(self.classes)
 
@@ -48,7 +48,6 @@ class LogisticRegression:
         train_steps = int(x_train.shape[0] / self.args["minibatch_size"])
 
         self.scaler = StandardScaler()
-        x_train = self.scaler.fit_transform(x_train)
 
         model = torch.nn.Sequential(torch.nn.Linear(self.args["num_features"], num_outputs)).to(self.device)
 
@@ -63,24 +62,35 @@ class LogisticRegression:
 
         training_size = x_train.shape[0]
         if self.args["validation_size"] < training_size:
-            x_training, x_validation, y_training, y_validation = train_test_split(
-                x_train, y_train, test_size=self.args["validation_size"], stratify=y_train
+            # x_training, x_validation, y_training, y_validation = train_test_split(
+            #     x_train, y_train, test_size=self.args["validation_size"], stratify=y_train
+            # )
+            # train_data = TensorDataset(
+            #     torch.tensor(x_training, dtype=torch.float32).to(self.device),
+            #     torch.tensor(y_training, dtype=torch.long).to(self.device),
+            # )
+            # val_data = TensorDataset(
+            #     torch.tensor(x_validation, dtype=torch.float32).to(self.device),
+            #     torch.tensor(y_validation, dtype=torch.long).to(self.device),
+            # )
+            idx_train, idx_val = train_test_split(
+                np.arange(training_size), test_size=self.args["validation_size"], stratify=group_id
             )
-
-            train_data = TensorDataset(
-                torch.tensor(x_training, dtype=torch.float32).to(self.device),
-                torch.tensor(y_training, dtype=torch.long).to(self.device),
+            self.scaler.fit(x_train[idx_train])
+            x_train = self.scaler.transform(x_train)
+            ds = TensorDataset(
+                torch.from_numpy(x_train),
+                torch.from_numpy(y_train),
             )
-            val_data = TensorDataset(
-                torch.tensor(x_validation, dtype=torch.float32).to(self.device),
-                torch.tensor(y_validation, dtype=torch.long).to(self.device),
-            )
+            train_data = torch.utils.data.Subset(ds, idx_train)
+            val_data = torch.utils.data.Subset(ds, idx_val)
             train_dataloader = DataLoader(train_data, shuffle=True, batch_size=self.args["minibatch_size"])
             val_dataloader = DataLoader(val_data, batch_size=self.args["minibatch_size"])
         else:
+            x_train = self.scaler.fit_transform(x_train)
             train_data = TensorDataset(
-                torch.tensor(x_train, dtype=torch.float32).to(self.device),
-                torch.tensor(y_train, dtype=torch.long).to(self.device),
+                torch.from_numpy(x_train),
+                torch.from_numpy(y_train),
             )
             train_dataloader = DataLoader(train_data, shuffle=True, batch_size=self.args["minibatch_size"])
             val_dataloader = None
@@ -101,12 +111,12 @@ class LogisticRegression:
             for i, data in tqdm(enumerate(train_dataloader), desc=f"epoch: {epoch}", total=train_steps):
                 x, y = data
 
-                y_hat = model(x)
+                y_hat = model(x.to(self.device))
                 if num_outputs == 1:
-                    loss = loss_function(y_hat.sigmoid(), y)
+                    loss = loss_function(y_hat.sigmoid(), y.to(self.device))
                 else:
                     yhat = torch.nn.functional.softmax(y_hat, dim=1)
-                    loss = loss_function(yhat, y)
+                    loss = loss_function(yhat, y.to(self.device))
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -125,12 +135,12 @@ class LogisticRegression:
                     for i, data in enumerate(val_dataloader):
                         x, y = data
 
-                        y_hat = model(x)
+                        y_hat = model(x.to(self.device))
                         if num_outputs == 1:
-                            total_val_loss += loss_function(y_hat.sigmoid(), y)
+                            total_val_loss += loss_function(y_hat.sigmoid(), y.to(self.device))
                         else:
                             yhat = torch.nn.functional.softmax(y_hat, dim=1)
-                            total_val_loss += loss_function(yhat, y)
+                            total_val_loss += loss_function(yhat, y.to(self.device))
                 total_val_loss = total_val_loss.cpu().detach().numpy() / steps
                 scheduler.step(total_val_loss)
 
