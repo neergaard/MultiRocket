@@ -4,18 +4,23 @@
 # https://arxiv.org/abs/2102.00457
 
 import time
+import logging
 
+import h5py
 import numpy as np
 from numba import njit, prange
 from sklearn.linear_model import RidgeClassifierCV
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
+from tqdm import tqdm
 
 from multirocket.logistic_regression import LogisticRegression
 
+logger = logging.getLogger(__name__)
+
 
 @njit(
-    "float32[:](float64[:,:,:],int32[:],int32[:],int32[:],int32[:],float32[:])",
+    "float32[:](float32[:,:,:],int32[:],int32[:],int32[:],int32[:],float32[:])",
     fastmath=True,
     parallel=False,
     cache=True,
@@ -145,11 +150,12 @@ def fit(X, num_features=10_000, max_dilations_per_kernel=32):
     _, num_channels, input_length = X.shape
 
     num_kernels = 84
-
+    logger.info('Fitting dilations')
     dilations, num_features_per_dilation = _fit_dilations(input_length, num_features, max_dilations_per_kernel)
 
     num_features_per_kernel = np.sum(num_features_per_dilation)
 
+    logger.info('Fitting quantiles')
     quantiles = _quantiles(num_kernels * num_features_per_kernel)
 
     num_dilations = len(dilations)
@@ -172,15 +178,17 @@ def fit(X, num_features=10_000, max_dilations_per_kernel=32):
 
         num_channels_start = num_channels_end
 
+    logger.info('Fitting biases')
     biases = _fit_biases(
         X, num_channels_per_combination, channel_indices, dilations, num_features_per_dilation, quantiles
     )
+    logger.info('Fitting done')
 
     return num_channels_per_combination, channel_indices, dilations, num_features_per_dilation, biases
 
 
 @njit(
-    "float32[:,:](float64[:,:,:],float64[:,:,:],Tuple((int32[:],int32[:],int32[:],int32[:],float32[:])),Tuple((int32[:],int32[:],int32[:],int32[:],float32[:])),int32)",
+    "float32[:,:](float32[:,:,:],float32[:,:,:],Tuple((int32[:],int32[:],int32[:],int32[:],float32[:])),Tuple((int32[:],int32[:],int32[:],int32[:],float32[:])),int32)",
     fastmath=True,
     parallel=True,
     cache=True,
@@ -497,7 +505,7 @@ def transform(X, X1, parameters, parameters1, n_features_per_kernel=4):
 
 class MultiRocket:
 
-    def __init__(self, num_features=50000, classifier="ridge", verbose=0, device="cpu"):
+    def __init__(self, num_features=50000, classifier="ridge", verbose=0, device="cpu", num_workers=0, batch_size=256, data_path=None):
         self.name = "MultiRocket"
 
         self.base_parameters = None
@@ -508,7 +516,7 @@ class MultiRocket:
         self.num_kernels = int(self.num_features / self.n_features_per_kernel)
 
         if verbose > 1:
-            print("[{}] Creating {} with {} kernels".format(self.name, self.name, self.num_kernels))
+            logger.info(f"[{self.name}] Creating {self.name} with {self.num_kernels} kernels")
 
         self.clf = classifier
         self.classifier = None
@@ -520,12 +528,19 @@ class MultiRocket:
         self.test_transforms_duration = 0
         self.apply_kernel_on_train_duration = 0
         self.apply_kernel_on_test_duration = 0
-
+        self.num_workers = num_workers
+        self.batch_size = batch_size
+        self.data_path = data_path
         self.verbose = verbose
 
-    def fit(self, x_train, y_train, predict_on_train=True):
+        if self.verbose:
+            if self.data_path is not None:
+                logger.info(f"[{self.name}] Saving tmp data at data path: {self.data_path}")
+            logger.info(f"[{self.name}] Initialized")
+
+    def fit(self, x_train, y_train, predict_on_train=True, stratify_var=None):
         if self.verbose > 1:
-            print("[{}] Training with training set of {}".format(self.name, x_train.shape))
+            logger.info(f'[{self.name}] Training with training set of {x_train.shape}')
         if x_train.shape[2] < 10:
             # handling very short series (like PensDigit from the MTSC archive)
             # series have to be at least a length of 10 (including differencing)
@@ -541,6 +556,7 @@ class MultiRocket:
         start_time = time.perf_counter()
 
         _start_time = time.perf_counter()
+
         xx = np.diff(x_train, 1)
         self.train_transforms_duration += time.perf_counter() - _start_time
 
@@ -550,38 +566,71 @@ class MultiRocket:
         self.generate_kernel_duration += time.perf_counter() - _start_time
 
         _start_time = time.perf_counter()
-        x_train_transform = transform(
-            x_train, xx, self.base_parameters, self.diff1_parameters, self.n_features_per_kernel
+        x_train_transform, x_shape = self.transform(
+            x_train, xx, self.base_parameters, self.diff1_parameters, self.n_features_per_kernel, save=True
         )
         self.apply_kernel_on_train_duration += time.perf_counter() - _start_time
 
-        x_train_transform = np.nan_to_num(x_train_transform)
+        # x_train_transform = np.nan_to_num(x_train_transform) # necessary?
 
         elapsed_time = time.perf_counter() - start_time
         if self.verbose > 1:
-            print("[{}] Kernels applied!, took {}s".format(self.name, elapsed_time))
-            print("[{}] Transformed Shape {}".format(self.name, x_train_transform.shape))
+            logger.info(f"[{self.name}] Kernels applied!, took {elapsed_time}s")
+            logger.info(f"[{self.name}] Transformed Shape {x_shape}")
 
         if self.verbose > 1:
-            print("[{}] Training".format(self.name))
+            logger.info(f"[{self.name}] Training")
 
         if self.clf.lower() == "ridge":
             self.classifier = make_pipeline(StandardScaler(), RidgeClassifierCV(alphas=np.logspace(-3, 3, 10)))
         else:
             self.classifier = LogisticRegression(
-                num_features=x_train_transform.shape[1], max_epochs=200, device=self.device
+                num_features=x_shape[-1], max_epochs=400, minibatch_size=self.batch_size, device=self.device, num_workers=self.num_workers
             )
         _start_time = time.perf_counter()
-        self.classifier.fit(x_train_transform, y_train)
+        self.classifier.fit(x_train_transform, y_train, stratify_var=stratify_var)
         self.train_duration = time.perf_counter() - _start_time
 
         if self.verbose > 1:
-            print("[{}] Training done!, took {:.3f}s".format(self.name, self.train_duration))
+            logger.info(f"[{self.name}] Training done!, took {self.train_duration:.3f} s")
         if predict_on_train:
             yhat = self.classifier.predict(x_train_transform)
         else:
             yhat = None
         return yhat
+
+    def transform(self, x, xx, base_parameters, diff1_parameters, n_features_per_kernel, save=False):
+        if self.verbose > 1:
+            logger.info(f"[{self.name}] Transforming data")
+        if save:
+            batch_size = 10000
+            n_samples = x.shape[0]
+            n_batches = max(1, n_samples // batch_size)
+            n_features = n_features_per_kernel * len(base_parameters[-1]) * 2  # 2 for base and diff1
+            logger.info(f'[{self.name}] Saving transformed data at data path: {self.data_path}')
+            with h5py.File(self.data_path, 'w') as f:
+                f.create_dataset("x", (n_samples, n_features), chunks=(1, n_features))
+                for i in tqdm(range(n_batches + 1)):
+
+                    current_batch_idx = slice(i * batch_size, (i + 1) * batch_size)
+                    if i == n_batches:
+                        current_batch_idx = slice(i * batch_size, None)
+
+                    # Compute transformed data on batch
+                    x_batch = x[current_batch_idx]
+                    xx_batch = xx[current_batch_idx]
+                    x_transform_batch = transform(x_batch, xx_batch, base_parameters, diff1_parameters, n_features_per_kernel)
+
+                    # write to h5
+                    f["x"][current_batch_idx] = x_transform_batch
+            x_shape = (n_samples, n_features)
+            x_transform = self.data_path
+        else:
+            x_transform = transform(x, xx, base_parameters, diff1_parameters, n_features_per_kernel)
+            x_shape = x_transform.shape
+        if self.verbose > 1:
+            logger.info(f"[{self.name}] Transforming done!")
+        return x_transform, x_shape
 
     def predict(self, x, output_probs=False):
         if self.verbose > 1:
